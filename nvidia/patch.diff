@@ -1,0 +1,99 @@
+--- NVIDIA-Linux-x86_64-367.57/kernel/common/inc/nv-mm.h
++++ NVIDIA-Linux-x86_64-367.57/kernel/common/inc/nv-mm.h
+@@ -45,8 +45,13 @@
+     #define NV_GET_USER_PAGES           get_user_pages
+     #define NV_GET_USER_PAGES_REMOTE    get_user_pages_remote
+ #else
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++    #define NV_GET_USER_PAGES(start, nr_pages, gup_flags, pages, vmas) \
++        get_user_pages(current, current->mm, start, nr_pages, gup_flags, pages, vmas)
++#else
+     #define NV_GET_USER_PAGES(start, nr_pages, write, force, pages, vmas) \
+         get_user_pages(current, current->mm, start, nr_pages, write, force, pages, vmas)
++#endif
+
+     #define NV_GET_USER_PAGES_REMOTE    get_user_pages
+ #endif
+--- NVIDIA-Linux-x86_64-367.57/kernel/nvidia/os-mlock.c
++++ NVIDIA-Linux-x86_64-367.57/kernel/nvidia/os-mlock.c
+@@ -117,7 +117,11 @@
+
+     down_read(&mm->mmap_sem);
+     ret = NV_GET_USER_PAGES((unsigned long)address,
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++                            page_count, write ? FOLL_WRITE : 0, user_pages, NULL);
++#else
+                             page_count, write, force, user_pages, NULL);
++#endif
+     up_read(&mm->mmap_sem);
+     pinned = ret;
+
+--- NVIDIA-Linux-x86_64-367.57/kernel/nvidia-drm/nvidia-drm-drv.c
++++ NVIDIA-Linux-x86_64-367.57/kernel/nvidia-drm/nvidia-drm-drv.c
+@@ -31,6 +31,8 @@
+ #include "nvidia-drm-crtc.h"
+ #include "nvidia-drm-mmap.h"
+
++#include <linux/version.h>
++
+ #if defined(NV_DRM_AVAILABLE)
+
+ #include "nvidia-drm-ioctl.h"
+@@ -598,7 +600,11 @@
+
+ static struct drm_driver nv_drm_driver = {
+
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++    .driver_features        = DRIVER_GEM | DRIVER_PRIME | DRIVER_RENDER | DRIVER_LEGACY,
++#else
+     .driver_features        = DRIVER_GEM | DRIVER_PRIME | DRIVER_RENDER,
++#endif
+
+     .gem_free_object        = nvidia_drm_gem_free,
+
+--- NVIDIA-Linux-x86_64-367.57/kernel/nvidia-drm/nvidia-drm-linux.c
++++ NVIDIA-Linux-x86_64-367.57/kernel/nvidia-drm/nvidia-drm-linux.c
+@@ -20,6 +20,7 @@
+  * DEALINGS IN THE SOFTWARE.
+  */
+
++#include <linux/version.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+ #include <linux/err.h>
+@@ -137,7 +138,11 @@
+
+     down_read(&mm->mmap_sem);
+
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++    pages_pinned = NV_GET_USER_PAGES(address, pages_count, write ? FOLL_WRITE : 0,
++#else
+     pages_pinned = NV_GET_USER_PAGES(address, pages_count, write, force,
++#endif
+                                      user_pages, NULL);
+     up_read(&mm->mmap_sem);
+
+--- NVIDIA-Linux-x86_64-367.57/kernel/nvidia-uvm/uvm8_tools.c
++++ NVIDIA-Linux-x86_64-367.57/kernel/nvidia-uvm/uvm8_tools.c
+@@ -20,6 +20,8 @@
+     DEALINGS IN THE SOFTWARE.
+
+ *******************************************************************************/
++#include <linux/version.h>
++
+ #include "uvm_common.h"
+ #include "uvm8_gpu.h"
+ #include "uvm8_tools.h"
+@@ -224,7 +226,11 @@
+     }
+
+     down_read(&current->mm->mmap_sem);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)
++    ret = NV_GET_USER_PAGES(user_va, num_pages, FOLL_WRITE, *pages, vmas);
++#else
+     ret = NV_GET_USER_PAGES(user_va, num_pages, 1, 0, *pages, vmas);
++#endif
+     up_read(&current->mm->mmap_sem);
+     if (ret != num_pages) {
+         status = NV_ERR_INVALID_ARGUMENT;
+
